@@ -62,10 +62,10 @@ def parse_args():
                       nargs=argparse.REMAINDER)
   parser.add_argument('--load_dir', dest='load_dir',
                       help='directory to load models',
-                      default="/srv/share/jyang375/models")
+                      default="jyang375/models/res101/pascal_voc")
   parser.add_argument('--image_dir', dest='image_dir',
                       help='directory to load images for demo',
-                      default="images")
+                      default="new_images")
   parser.add_argument('--cuda', dest='cuda',
                       help='whether use CUDA',
                       action='store_true')
@@ -103,6 +103,18 @@ def parse_args():
 lr = cfg.TRAIN.LEARNING_RATE
 momentum = cfg.TRAIN.MOMENTUM
 weight_decay = cfg.TRAIN.WEIGHT_DECAY
+
+def _save_array(filename, arr):
+    """
+    """
+    with open(filename,'wb') as f:
+        np.save(f, arr)
+
+def _load_array(filename):
+    """
+    """
+    with open(filename, 'rb') as f:
+        return np.load(f)
 
 def _get_image_blob(im):
   """Converts an image into a network input.
@@ -154,16 +166,18 @@ if __name__ == '__main__':
 
   print('Using config:')
   pprint.pprint(cfg)
+  pprint.pprint("This is the value of class agnostic: {}".format(args.class_agnostic))
+
   np.random.seed(cfg.RNG_SEED)
 
   # train set
   # -- Note: Use validation set and disable the flipped to enable faster loading.
 
-  input_dir = args.load_dir + "/" + args.net + "/" + args.dataset
-  if not os.path.exists(input_dir):
-    raise Exception('There is no input directory for loading network from ' + input_dir)
-  load_name = os.path.join(input_dir,
-    'faster_rcnn_{}_{}_{}.pth'.format(args.checksession, args.checkepoch, args.checkpoint))
+  # input_dir = args.load_dir + "/" + args.net + "/" + args.dataset
+  # if not os.path.exists(input_dir):
+  #   raise Exception('There is no input directory for loading network from ' + input_dir)
+  # load_name = os.path.join(input_dir,
+  #   'faster_rcnn_{}_{}_{}.pth'.format(args.checksession, args.checkepoch, args.checkpoint))
 
   pascal_classes = np.asarray(['__background__',
                        'aeroplane', 'bicycle', 'bird', 'boat',
@@ -174,9 +188,9 @@ if __name__ == '__main__':
 
   # initilize the network here.
   if args.net == 'vgg16':
-    fasterRCNN = vgg16(pascal_classes, pretrained=False, class_agnostic=args.class_agnostic)
+    fasterRCNN = vgg16(pascal_classes, pretrained=True, class_agnostic=args.class_agnostic)
   elif args.net == 'res101':
-    fasterRCNN = resnet(pascal_classes, 101, pretrained=False, class_agnostic=args.class_agnostic)
+    fasterRCNN = resnet(pascal_classes, 101, pretrained=True, class_agnostic=args.class_agnostic)
   elif args.net == 'res50':
     fasterRCNN = resnet(pascal_classes, 50, pretrained=False, class_agnostic=args.class_agnostic)
   elif args.net == 'res152':
@@ -187,21 +201,21 @@ if __name__ == '__main__':
 
   fasterRCNN.create_architecture()
 
-  print("load checkpoint %s" % (load_name))
-  if args.cuda > 0:
-    checkpoint = torch.load(load_name)
-  else:
-    checkpoint = torch.load(load_name, map_location=(lambda storage, loc: storage))
-  fasterRCNN.load_state_dict(checkpoint['model'])
-  if 'pooling_mode' in checkpoint.keys():
-    cfg.POOLING_MODE = checkpoint['pooling_mode']
+  # print("load checkpoint %s" % (load_name))
+  # if args.cuda > 0:
+  #   checkpoint = torch.load(load_name)
+  # else:
+  #   checkpoint = torch.load(load_name, map_location=(lambda storage, loc: storage))
+  # fasterRCNN.load_state_dict(checkpoint['model'])
+  # if 'pooling_mode' in checkpoint.keys():
+  #   cfg.POOLING_MODE = checkpoint['pooling_mode']
 
 
   print('load model successfully!')
 
   # pdb.set_trace()
 
-  print("load checkpoint %s" % (load_name))
+  # print("load checkpoint %s" % (load_name))
 
   # initilize the tensor holder here.
   im_data = torch.FloatTensor(1)
@@ -224,6 +238,8 @@ if __name__ == '__main__':
 
   if args.cuda > 0:
     cfg.CUDA = True
+  cfg.CUDA = False
+  args.cuda = 0
 
   if args.cuda > 0:
     fasterRCNN.cuda()
@@ -342,13 +358,18 @@ if __name__ == '__main__':
               cls_boxes = pred_boxes[inds, :]
             else:
               cls_boxes = pred_boxes[inds][:, j * 4:(j + 1) * 4]
-            
+
             cls_dets = torch.cat((cls_boxes, cls_scores.unsqueeze(1)), 1)
             # cls_dets = torch.cat((cls_boxes, cls_scores), 1)
             cls_dets = cls_dets[order]
             # keep = nms(cls_dets, cfg.TEST.NMS, force_cpu=not cfg.USE_GPU_NMS)
             keep = nms(cls_boxes[order, :], cls_scores[order], cfg.TEST.NMS)
+            # print(keep)
             cls_dets = cls_dets[keep.view(-1).long()]
+            u = cls_dets.cpu().numpy()
+            # print(np.max(u[:,-1]))
+            # print(pascal_classes[j])
+            _save_array("cls_dets_demo_{}.npy".format(pascal_classes[j]), u)
             if vis:
               im2show = vis_detections(im2show, pascal_classes[j], cls_dets.cpu().numpy(), 0.5)
 
