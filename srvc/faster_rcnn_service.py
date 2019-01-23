@@ -28,6 +28,7 @@ from model.faster_rcnn.resnet import resnet
 from model.rpn.bbox_transform import bbox_transform_inv, clip_boxes
 from model.roi_layers import nms
 from model.utils.net_utils import vis_detections
+from datasets.pascal_voc import pascal_voc
 
 
 def _save_array(filename, arr):
@@ -232,9 +233,9 @@ def _collect_regions(model, im_data, gt_boxes, mode="align"):
     """
     base_feats = model.RCNN_base(im_data)
     if mode == "align":
-        pooled_feat = model.RCNN_roi_align(base_feat, gt_boxes.view(-1, 5))
+        pooled_feat = model.RCNN_roi_align(base_feats, gt_boxes.view(-1, 5))
     elif mode == "pooling":
-        pooled_feat = model.RCN_roi_pool(base_feat, gt_boxes.view(-1, 5))
+        pooled_feat = model.RCN_roi_pool(base_feats, gt_boxes.view(-1, 5))
     return pooled_feat.numpy()
 
 def _run_model_infer(model, im_data, im_info, gt_boxes, num_boxes):
@@ -261,7 +262,7 @@ def _run_model_gt(model, im_data, gt_boxes, mode="align"):
       gt_boxes (torch.FloatTensor): ground truth boxes
     """
     with torch.no_grad():
-        return _collect_regions(model, im_data, mode=mode)
+        return _collect_regions(model, im_data, gt_boxes, mode=mode)
 
 def _process_images_infer(image_dir, imagelist, model, cfg):
     """Initialize input tensors to fasterRCNN.
@@ -392,6 +393,7 @@ def _nms(cls_prob, rois, bbox_pred, im, im_info, im_scales, classes, vis, thresh
             # cv2.imshow("image", imRGB)
             # time.sleep(10)
 
+
 def _main(serialize=False):
     """Initialize input tensors to fasterRCNN.
     Arguments:
@@ -453,5 +455,37 @@ def _compare_results(classes):
         print(demo_res[k] == srvc_res[k])
 
 
+def _get_pascal_voc():
+    voc_path = "../../VOC_data/VOCdevkit"
+    voc_path = osp.abspath(voc_path)
+    print(voc_path)
+    return pascal_voc("trainval", "2007", devkit_path=voc_path)
+
+def _get_voc_features(im_file, roi, model, classes, cfg):
+    boxes = torch.FloatTensor(roi["boxes"].astype(np.float32))
+    boxes = torch.cat((boxes, torch.ones(boxes.shape[0], 1)), 1)
+    gt_classes = roi["gt_classes"]
+
+    im_data, im_info, _, num_boxes, im_scales, im \
+    = _process_image(im_file, cfg)
+
+    feats = _run_model_gt(model, im_data, boxes)
+    return feats
+
+def _gt_regions():
+    _get_cfg()
+    classes = _get_classes()
+    fasterRCNN = _get_model(classes)
+    d = _get_pascal_voc()
+
+    tester_id = d.image_index[0]
+    im_file = d.image_path_from_index(tester_id)
+    roi = d.roidb[0]
+    feats = _get_voc_features(im_file, roi, fasterRCNN, classes, cfg)
+    print(feats)
+
+
 if __name__ == "__main__":
-    _main()
+    # _main()
+    # _get_pascal_voc()
+    _gt_regions()
